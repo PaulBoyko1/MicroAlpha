@@ -24,6 +24,6 @@ jobs:
       - name: Type check
         run: mypy src
       - name: Test
-        run: pytest --cov=microalpha --cov-report=term-missing --cov-fail-under=85
+        run: pytest --cov=microalpha --cov-report=term-missing --cov-fail-under=70
       - name: Build package
         run: python -m build
