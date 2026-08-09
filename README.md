@@ -8,13 +8,13 @@ The goal is not to ship a retail trading bot. The goal is to make every research
 
 ## Current capabilities
 
-- strict LOBSTER message and order-book width/type validation
-- LOBSTER halt and unoccupied-depth handling
+- strict LOBSTER field, halt, quote-ordering, and occupancy validation
+- canonical LOBSTER halt and unoccupied-depth handling
 - midprice, spread, queue/depth imbalance, microprice displacement
 - event-semantic signed liquidity flow and aggressor trade size
-- top-of-book order-flow imbalance (OFI)
-- event-horizon forward-return labels with optional session boundaries
-- expanding walk-forward evaluation with enforced label purge
+- top-of-book order-flow imbalance (OFI) with optional session resets
+- event-horizon forward-return labels with contiguous session boundaries
+- expanding walk-forward evaluation with non-overlapping test windows and label purge
 - majority and regularized logistic-regression baselines
 - CLI commands for inspection and baseline research
 - unit tests, Ruff, mypy, coverage, package-build CI
@@ -51,11 +51,12 @@ MicroAlpha does not bundle market data. LOBSTER data must be obtained separately
 
 1. Features may use current and past information only.
 2. Forward labels are built in a separate stage.
-3. The purge between train and test must be at least the label horizon.
-4. Hyperparameters are selected before the final held-out period is examined.
-5. Predictive metrics and economic metrics are reported separately.
-6. Any PnL result must state spread, fees, latency, queue/fill assumptions, and inventory constraints.
-7. Negative findings remain part of the research record.
+3. Multi-session inputs must use the same contiguous session identifier for stateful features and labels.
+4. The purge between train and test must be at least the label horizon, and aggregated test windows must not overlap.
+5. Hyperparameters are selected before the final held-out period is examined.
+6. Predictive metrics and economic metrics are reported separately.
+7. Any PnL result must state spread, fees, latency, queue/fill assumptions, and inventory constraints.
+8. Negative findings remain part of the research record.
 
 ## Architecture
 
