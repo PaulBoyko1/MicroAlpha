@@ -67,12 +67,17 @@ def load_message_file(path: str | Path) -> pd.DataFrame:
     frame = _read_exact_width(path, len(MESSAGE_COLUMNS), kind="message")
     frame.columns = MESSAGE_COLUMNS
     _require_numeric(frame, MESSAGE_COLUMNS)
-    _require_integer_valued(frame, ["event_type", "order_id", "size", "direction"])
+    _require_integer_valued(
+        frame,
+        ["event_type", "order_id", "size", "price", "direction"],
+    )
 
     if (frame["time"] < 0).any():
         raise ValueError("message timestamps must be non-negative")
     if not np.all(np.diff(frame["time"].to_numpy(dtype=float)) >= 0):
         raise ValueError("message timestamps must be monotonic non-decreasing")
+    if (frame["order_id"] < 0).any():
+        raise ValueError("message order IDs must be non-negative")
     if (frame["size"] < 0).any():
         raise ValueError("message sizes must be non-negative")
 
@@ -81,14 +86,21 @@ def load_message_file(path: str | Path) -> pd.DataFrame:
     if invalid_types:
         raise ValueError(f"unsupported LOBSTER event types: {sorted(invalid_types)}")
 
-    regular = frame[frame["event_type"] != 7]
+    regular = frame.loc[frame["event_type"] != 7]
     invalid_directions = set(regular["direction"].astype(int).unique()) - VALID_DIRECTIONS
     if invalid_directions:
         raise ValueError(f"invalid order directions: {sorted(invalid_directions)}")
+    if (regular["price"] <= 0).any():
+        raise ValueError("non-halt message prices must be positive")
 
-    halts = frame[frame["event_type"] == 7]
-    if not halts.empty and not (halts["direction"] == -1).all():
-        raise ValueError("LOBSTER halt messages must use direction -1")
+    halts = frame.loc[frame["event_type"] == 7]
+    if not halts.empty:
+        if not (halts["direction"] == -1).all():
+            raise ValueError("LOBSTER halt messages must use direction -1")
+        if not (halts[["order_id", "size"]] == 0).all().all():
+            raise ValueError("LOBSTER halt messages must have zero order ID and size")
+        if not halts["price"].isin([-1, 0, 1]).all():
+            raise ValueError("LOBSTER halt message prices must be -1, 0, or 1")
 
     result = frame.copy()
     result["event_type"] = result["event_type"].astype(np.int8)
@@ -123,7 +135,13 @@ def load_orderbook_file(path: str | Path, *, levels: int) -> pd.DataFrame:
             price_col = f"{side}_price_{level}"
             size_col = f"{side}_size_{level}"
             raw_price = result[price_col].astype(float)
-            empty = (result[size_col] == 0) | (raw_price == dummy)
+            has_dummy_price = raw_price == dummy
+            has_zero_size = result[size_col] == 0
+            if (has_dummy_price != has_zero_size).any():
+                raise ValueError(
+                    f"unoccupied {side} levels must pair the dummy price with zero size"
+                )
+            empty = has_dummy_price
             invalid_occupied = (~empty) & (raw_price <= 0)
             if invalid_occupied.any():
                 raise ValueError(f"occupied {side} prices must be positive")
@@ -136,13 +154,25 @@ def load_orderbook_file(path: str | Path, *, levels: int) -> pd.DataFrame:
 
 
 def _validate_level_ordering(frame: pd.DataFrame, levels: int) -> None:
+    best_ask = frame["ask_price_1"]
+    best_bid = frame["bid_price_1"]
+    crossed = best_ask.notna() & best_bid.notna() & (best_ask <= best_bid)
+    if crossed.any():
+        raise ValueError("best ask must be greater than best bid")
+
     for level in range(2, levels + 1):
         ask_prev = frame[f"ask_price_{level - 1}"]
         ask = frame[f"ask_price_{level}"]
         bid_prev = frame[f"bid_price_{level - 1}"]
         bid = frame[f"bid_price_{level}"]
+        ask_gap = ask.notna() & ask_prev.isna()
+        bid_gap = bid.notna() & bid_prev.isna()
         ask_bad = ask.notna() & ask_prev.notna() & (ask <= ask_prev)
         bid_bad = bid.notna() & bid_prev.notna() & (bid >= bid_prev)
+        if ask_gap.any():
+            raise ValueError(f"ask levels must be contiguous from level 1 (level {level})")
+        if bid_gap.any():
+            raise ValueError(f"bid levels must be contiguous from level 1 (level {level})")
         if ask_bad.any():
             raise ValueError(f"ask prices must increase with depth (level {level})")
         if bid_bad.any():
