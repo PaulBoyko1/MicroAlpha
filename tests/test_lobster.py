@@ -48,3 +48,44 @@ def test_dummy_unoccupied_levels_become_nan(tmp_path: Path) -> None:
     frame = load_orderbook_file(book, levels=1)
     assert np.isnan(frame.loc[0, "ask_price_1"])
     assert np.isnan(frame.loc[0, "bid_price_1"])
+
+
+@pytest.mark.parametrize(
+    ("row", "match"),
+    [
+        ([1.0, 1, 1, 10, 1000000.5, 1], "price.*integer-valued"),
+        ([1.0, 1, 1, 10, 0, 1], "non-halt message prices"),
+        ([1.0, 7, 1, 0, -1, -1], "zero order ID and size"),
+        ([1.0, 7, 0, 0, 2, -1], "prices must be -1, 0, or 1"),
+    ],
+)
+def test_message_loader_rejects_noncanonical_event_fields(
+    tmp_path: Path,
+    row: list[float],
+    match: str,
+) -> None:
+    message = tmp_path / "message.csv"
+    _write(message, [row])
+    with pytest.raises(ValueError, match=match):
+        load_message_file(message)
+
+
+def test_empty_levels_require_matching_dummy_price_and_zero_size(tmp_path: Path) -> None:
+    book = tmp_path / "book.csv"
+    _write(book, [[999999999, 10, 1000000, 100]])
+    with pytest.raises(ValueError, match="dummy price with zero size"):
+        load_orderbook_file(book, levels=1)
+
+
+def test_order_book_rejects_crossed_best_quotes(tmp_path: Path) -> None:
+    book = tmp_path / "book.csv"
+    _write(book, [[1000000, 100, 1000000, 100]])
+    with pytest.raises(ValueError, match="best ask must be greater"):
+        load_orderbook_file(book, levels=1)
+
+
+def test_order_book_rejects_gapped_depth(tmp_path: Path) -> None:
+    book = tmp_path / "book.csv"
+    _write(book, [[999999999, 0, -999999999, 0, 1000200, 100, 1000000, 100]])
+    with pytest.raises(ValueError, match="ask levels must be contiguous"):
+        load_orderbook_file(book, levels=2)

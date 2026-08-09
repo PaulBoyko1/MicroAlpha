@@ -4,8 +4,8 @@
 
 - Parse LOBSTER message/order-book pairs with exact-width validation.
 - Preserve row alignment and chronological ordering.
-- Normalize dummy/unoccupied depth to missing state instead of extreme prices.
-- Make halt/cross/session policy explicit.
+- Normalize canonical dummy/zero pairs to missing state instead of extreme prices.
+- Validate canonical halt records, contiguous depth, and uncrossed best quotes.
 - Reject malformed numeric and enum fields instead of silently coercing them.
 
 ## Phase 2 — causal microstructure features
@@ -18,14 +18,15 @@ Study information available at event time only:
 - microprice displacement
 - event-semantic signed liquidity flow
 - aggressor execution flow
-- top-of-book OFI
+- top-of-book OFI, reset at declared session boundaries
 - rolling submission/cancel/execution intensity
 
 ## Phase 3 — labels and evaluation
 
 - event-time horizons first, wall-clock horizons second
-- labels never cross sessions
+- labels and stateful features never cross contiguous sessions
 - purge >= label horizon by construction
+- non-overlapping test windows for aggregate walk-forward metrics
 - majority/heuristic baselines before ML
 - regularized logistic regression before boosted trees
 - sequence models only after simpler models establish an incremental gap
